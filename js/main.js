@@ -17,6 +17,23 @@ const historyPanel = document.getElementById('history-panel');
 function add(a, b) {
   return a + b;
 }
+// 2. 减法
+function subtract(a, b) {
+    return a - b;
+}
+
+// 3. 乘法
+function multiply(a, b) {
+    return a * b;
+}
+
+// 4. 除法
+function divide(a, b) {
+    if (b === 0) {
+        return ERROR_TEXT; // 如果除数为0，返回错误提示（第25行定义的ERROR_TEXT = '错误'）
+    }
+    return a / b;
+}
 
 // ---------------------------------------------------------------
 // 计算状态
@@ -28,12 +45,6 @@ let text = INITIAL;
 let acc = null;
 let pendingOp = null;
 let waiting = false;
-let memory = 0;
-
-// 连算（连按 = 重复上次运算）：记住上一次求值的运算符与右操作数
-let lastOp = null;
-let lastRight = null;
-let canRepeat = false;
 
 function show() {
   displayMain.textContent = text;
@@ -97,7 +108,6 @@ function inputDigit(digit) {
   if (isError()) {
     text = INITIAL;
   }
-  canRepeat = false; // 开始新一轮数字输入，连算资格作废
   if (waiting) {
     text = digit;
     waiting = false;
@@ -111,7 +121,6 @@ function inputDecimal() {
   if (isError()) {
     text = INITIAL;
   }
-  canRepeat = false; // 开始新一轮数字输入，连算资格作废
   if (waiting) {
     text = `${INITIAL}.`;
     waiting = false;
@@ -125,7 +134,6 @@ function inputOperator(op) {
   if (isError()) {
     return;
   }
-  canRepeat = false; // 选定新的运算符，旧的连算作废
 
   if (pendingOp !== null) {
     if (waiting) {
@@ -148,32 +156,15 @@ function inputOperator(op) {
 }
 
 function inputEquals() {
-  if (isError()) {
+  if (isError() || pendingOp === null) {
     return;
-  }
-
-  if (pendingOp === null) {
-    // 连算：没有新的待算运算时，若上次求值可重复，
-    // 就复用那次的运算符和右操作数，对当前结果再算一次
-    if (!canRepeat) {
-      return;
-    }
-    acc = Number(text);
-    pendingOp = lastOp;
-    text = formatResult(lastRight);
   }
 
   const line = `${formatResult(acc)} ${pendingOp} ${text} =`;
 
   if (!applyPending()) {
-    canRepeat = false; // 求值失败（如除零）进入错误态，连算资格作废
     return;
   }
-
-  // 记住本次的运算符和右操作数，供下一次按 = 连算
-  lastOp = pendingOp;
-  lastRight = Number(text);
-  canRepeat = true;
 
   text = formatResult(acc);
 
@@ -198,7 +189,6 @@ function inputBackspace() {
 function inputClearEntry() {
   text = INITIAL;
   waiting = false;
-  canRepeat = false; // CE 开始新的输入，连算资格作废
 
   if (pendingOp === null) {
     acc = null;
@@ -214,7 +204,6 @@ function inputSqrt() {
   if (isError()) {
     return;
   }
-  canRepeat = false; // 一元运算改变了当前数，连算资格作废
 
   const value = Number(text);
   if (value < 0) {
@@ -229,39 +218,11 @@ function inputSqrt() {
   show();
 }
 
-/** 百分号键：加减时按左操作数的百分之几计算，乘除时直接转成小数。 */
-function inputPercent() {
-  if (isError()) {
-    return;
-  }
-  canRepeat = false; // 一元运算改变了当前数，连算资格作废
-
-  const value = Number(text);
-  const isPercentOfLeft = pendingOp === '+' || pendingOp === '−';
-  let result;
-
-  if (acc !== null && isPercentOfLeft) {
-    result = acc * value / 100;
-  } else {
-    result = value / 100;
-  }
-
-  text = formatResult(result);
-
-  if (text === ERROR_TEXT) {
-    clearState();
-    showSub('');
-  }
-
-  show();
-}
-
 /** 平方键：对当前显示的数求平方。 */
 function inputSquare() {
   if (isError()) {
     return;
   }
-  canRepeat = false; // 一元运算改变了当前数，连算资格作废
 
   const value = Number(text);
   const result = formatResult(value * value);
@@ -278,31 +239,10 @@ function inputSquare() {
   show();
 }
 
-/** 倒数键：对当前显示的数求倒数。 */
-function inputReciprocal() {
-  if (isError()) {
-    return;
-  }
-  canRepeat = false; // 一元运算改变了当前数，连算资格作废
-
-  const value = Number(text);
-  text = formatResult(1 / value);
-
-  if (text === ERROR_TEXT) {
-    clearState();
-    showSub('');
-  }
-
-  show();
-}
-
 /** C 键：全部清零。 */
 function inputClear() {
   text = INITIAL;
   clearState();
-  lastOp = null; // 连算记忆一并清除
-  lastRight = null;
-  canRepeat = false;
   showSub('');
   show();
 }
@@ -317,46 +257,6 @@ function inputCopy() {
     .then(() => showSub('已复制'))
     .catch(() => showSub('复制失败'));
 }
-/** 内存加：把当前显示的数加到内存里。 */
-function inputMemoryAdd() {
-  if (isError()) {
-    return;
-  }
-  const value = Number(text);
-  if (!Number.isFinite(value)) {
-    return;
-  }
-  memory = memory + value;
-  waiting = true;
-}
-
-/** 内存减：把当前显示的数从内存里减掉。 */
-function inputMemorySubtract() {
-  if (isError()) {
-    return;
-  }
-  const value = Number(text);
-  if (!Number.isFinite(value)) {
-    return;
-  }
-  memory = memory - value;
-  waiting = true;
-}
-
-/** 内存读：把内存里的数取出来显示到主屏。 */
-function inputMemoryRecall() {
-  if (isError()) {
-    return;
-  }
-  text = formatResult(memory);
-  waiting = true;
-  show();
-}
-
-/** 内存清：把内存归零。 */
-function inputMemoryClear() {
-  memory = 0;
-}
 
 // ---------------------------------------------------------------
 // 键盘渲染
@@ -368,11 +268,8 @@ const LAYOUT = [
   ['0', 'digit'], ['−', 'operator'], ['+', 'operator'], ['=', 'equals'],
   ['.', 'decimal'], ['⌫', 'backspace'], ['CE', 'clearEntry'], ['√', 'sqrt'],
   ['x²', 'square'],
-  ['1/x', 'reciprocal'],
   ['(', 'lparen'], [')', 'rparen'], // #43 新增：末行整行放左右括号
   ['复制', 'copy'],
-  ['MC', 'mc'], ['MR', 'mr'], ['M+', 'mplus'], ['M−', 'mminus'],
-  ['%', 'percent'], // #33 新增：百分号键
 ];
 
 const KEY_CLASS = {
@@ -385,15 +282,9 @@ const KEY_CLASS = {
   clearEntry: 'key--danger',
   sqrt: 'key--action',
   square: 'key--action',
-  percent: 'key--action',
-  reciprocal: 'key--action',
   lparen: 'key--action', // #43 新增
   rparen: 'key--action',
   copy: 'key--action',
-  mc: 'key--action',
-  mr: 'key--action',
-  mplus: 'key--action',
-  mminus: 'key--action',
 };
 
 LAYOUT.forEach(([label, kind]) => {
@@ -418,28 +309,14 @@ LAYOUT.forEach(([label, kind]) => {
       inputSqrt();
     } else if (kind === 'square') {
       inputSquare();
-    } else if (kind === 'reciprocal') {
-      inputReciprocal();
-    } else if (kind === 'percent') {
-      inputPercent();
-    } else if (kind === 'copy') {
-      inputCopy();
-    } else if (kind === 'mc') {
-      inputMemoryClear();
-    } else if (kind === 'mr') {
-      inputMemoryRecall();
-    } else if (kind === 'mplus') {
-      inputMemoryAdd();
-    } else if (kind === 'mminus') {
-      inputMemorySubtract();
-    } else if (kind === 'lparen' || kind === 'rparen') {
-      // 括号键占位：尚无表达式解析，忽略点击，避免误触发 =
     } else {
       inputEquals();
     }
-  });
-  keyboard.appendChild(button);
+    handleKeyAction(kind, label); // 分发逻辑统一收口到 handleKeyAction（原 if/else 链原样搬移）
+    
+        });
 });
+     
 
 // =========================================
 // 新增：物理键盘输入监听
@@ -463,10 +340,7 @@ document.addEventListener('keydown', (e) => {
     inputBackspace();
   } else if (e.key === 'Escape' || e.key.toLowerCase() === 'c') {
     inputClear();
-  } else {
-    return;
   }
-  e.preventDefault();
 });
 
 // =========================================
@@ -517,7 +391,6 @@ function recordHistory(line, result) {
 function refillFromHistory(item) {
   text = item.result;
   clearState();
-  canRepeat = false; // 回填的是另一条历史的结果，与之前那次连算无关
   waiting = true; // 与求值后一致：接着按数字另起一轮，按运算符则用这个结果继续算
   showSub('');
   show();
@@ -580,3 +453,51 @@ if (historyPanel && historyList) {
 loadHistory();
 renderHistory();
 show();
+
+
+// ================= 绑定键盘点击事件 =================
+document.querySelectorAll('.key').forEach(button => {
+    button.addEventListener('click', () => {
+        const val = button.dataset.val;
+
+        // 1. 数字和小数点
+        if (!isNaN(val) || val === '.') {
+            if (text === '0' && val !== '.') { text = val; } 
+            else { text += val; }
+            show();
+        }
+        // 2. 加减乘除符号
+        else if (['+', '-', '×', '÷'].includes(val)) {
+            acc = parseFloat(text);
+            pendingOp = val;
+            waiting = true;
+            showSub(`${acc} ${val}`);
+        }
+        // 3. 等号
+        else if (val === '=') {
+            if (pendingOp && acc !== null) {
+                const current = parseFloat(text);
+                let result;
+                if (pendingOp === '+') result = add(acc, current);
+                if (pendingOp === '-') result = subtract(acc, current);
+                if (pendingOp === '×') result = multiply(acc, current);
+                if (pendingOp === '÷') result = divide(acc, current);
+                text = String(result);
+                show();
+                showSub('');
+                acc = null;
+                pendingOp = null;
+                waiting = false;
+            }
+        }
+        // 4. 清除按钮
+        else if (val === 'C') {
+            text = INITIAL;
+            acc = null;
+            pendingOp = null;
+            waiting = false;
+            show();
+            showSub('');
+        }
+    });
+});
