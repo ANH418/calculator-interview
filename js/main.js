@@ -35,3 +35,17 @@ function divide(a, b) {
     }
     return a / b;
 }
+
+// 5. 对数 log10
+/**
+ * 常用对数 log10
+ * @param {number} x 输入数字
+ * @returns {number|string} 以10为底的对数，x<=0 返回非法输入
+ */
+function log10(x) {
+    if (x <= 0) {
+        return "非法输入";
+    }
+    const res = Math.log10(x);
+    return Number(res.toPrecision(10));
+}
