@@ -53,6 +53,16 @@ body {
   text-align: right;
   overflow-x: auto;      /* 内容过长时横向滚动 */
   white-space: nowrap;
+  /* 只隐藏滚动条外观，滚动能力保留（#123） */
+  scrollbar-width: none;          /* Firefox */
+  -ms-overflow-style: none;       /* 旧 Edge / IE */
+}
+
+/* Chromium / Safari：把滚动条画成 0 尺寸（#123） */
+.display__main::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 .display__sub {
