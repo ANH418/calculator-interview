@@ -102,6 +102,377 @@ function formatResult(n) {
     }
     if (Number.isInteger(n)) {
         return String(n);
+    acc = Number(text);
+    pendingOp = lastOp;
+    text = formatResult(lastRight);
+  }
+
+  const line = `${formatResult(acc)} ${pendingOp} ${text} =`;
+
+  if (!applyPending()) {
+    canRepeat = false; // 求值失败（如除零）进入错误态，连算资格作废
+    return;
+  }
+
+  // 记住本次的运算符和右操作数，供下一次按 = 连算
+  lastOp = pendingOp;
+  lastRight = Number(text);
+  canRepeat = true;
+
+  text = formatResult(acc);
+
+  // line 在 applyPending 之前就算好了，左侧操作数不会被结果覆盖（原来这里把 acc 用成了结果）
+  recordHistory(line, text);
+
+  clearState();
+  waiting = true;
+  showSub(line);
+  show();
+}
+
+function inputBackspace() {
+  if (isError()) {
+    return;
+  }
+  // π 整体删除：当前显示的就是 π 的值时，一次退格全删
+  if (text === PI_TEXT) {
+    text = INITIAL;
+    waiting = false;
+    show();
+    return;
+  }
+  if (waiting) {
+    return;
+  }
+
+  text = text.slice(0, -1) || INITIAL;
+  show();
+}
+
+function inputClearEntry() {
+  text = INITIAL;
+  waiting = false;
+  canRepeat = false; // CE 开始新的输入，连算资格作废
+
+  if (pendingOp === null) {
+    acc = null;
+    showSub('');
+  } else {
+    showSub(`${formatResult(acc)} ${pendingOp}`);
+  }
+
+  show();
+}
+
+function inputSqrt() {
+  if (isError()) {
+    return;
+  }
+  canRepeat = false; // 一元运算改变了当前数，连算资格作废
+
+  const value = Number(text);
+  if (value < 0) {
+    text = ERROR_TEXT;
+    clearState();
+    showSub('');
+    show();
+    return;
+  }
+
+  text = formatResult(Math.sqrt(value));
+  show();
+}
+
+/** 百分号键：加减时按左操作数的百分之几计算，乘除时直接转成小数。 */
+function inputPercent() {
+  if (isError()) {
+    return;
+  }
+  canRepeat = false; // 一元运算改变了当前数，连算资格作废
+
+  const value = Number(text);
+  const isPercentOfLeft = pendingOp === '+' || pendingOp === '−';
+  let result;
+
+  if (acc !== null && isPercentOfLeft) {
+    result = acc * value / 100;
+  } else {
+    result = value / 100;
+  }
+
+  text = formatResult(result);
+
+  if (text === ERROR_TEXT) {
+    clearState();
+    showSub('');
+  }
+
+  show();
+}
+
+/** 平方键：对当前显示的数求平方。 */
+function inputSquare() {
+  if (isError()) {
+    return;
+  }
+  canRepeat = false; // 一元运算改变了当前数，连算资格作废
+
+  const value = Number(text);
+  const result = formatResult(value * value);
+
+  if (result === ERROR_TEXT) {
+    text = ERROR_TEXT;
+    clearState();
+    showSub('');
+    show();
+    return;
+  }
+
+  text = result;
+  show();
+}
+
+/** 倒数键：对当前显示的数求倒数。 */
+function inputReciprocal() {
+  if (isError()) {
+    return;
+  }
+  canRepeat = false; // 一元运算改变了当前数，连算资格作废
+
+  const value = Number(text);
+  text = formatResult(1 / value);
+
+  if (text === ERROR_TEXT) {
+    clearState();
+    showSub('');
+  }
+
+  show();
+}
+
+/** π 键：输入圆周率的近似值（用浮点近似，不做高精度符号显示）。 */
+const PI_TEXT = formatResult(Math.PI);
+
+function inputPi() {
+  if (isError()) {
+    text = INITIAL;
+  }
+  text = PI_TEXT;
+  waiting = true;
+  show();
+}
+
+// ---------------------------------------------------------------
+// 三角函数与角度模式（DEG/RAD）
+// ---------------------------------------------------------------
+let useDegrees = true; // 默认角度制 DEG
+
+/** DEG/RAD 切换键：翻转角度模式；无 pending 运算时在副屏提示当前模式。 */
+function toggleAngleMode() {
+  useDegrees = !useDegrees;
+  if (pendingOp === null) {
+    showSub(useDegrees ? '角度制 DEG' : '弧度制 RAD');
+  }
+}
+
+/**
+ * 三角函数键：对当前显示值求 sin/cos/tan，行为与 √ 等一元运算键一致。
+ * @param {string} name 函数名：'sin' | 'cos' | 'tan'
+ */
+function inputTrig(name) {
+  if (isError()) {
+    return;
+  }
+  canRepeat = false; // 一元运算改变了当前数，连算资格作废
+
+  const value = Number(text);
+  if (!Number.isFinite(value)) {
+    return;
+  }
+
+  // DEG 模式先把角度换算成弧度；RAD 模式直接用输入值
+  const angle = useDegrees ? (value * Math.PI) / 180 : value;
+
+  // tan 在 90°（π/2）等无定义处：余弦接近 0，按「错误」处理，不显示 Infinity。
+  // 阈值取 1e-10：显示值只有 12 位有效数字，离 π/2 这么近的输入就视为 π/2
+  if (name === 'tan' && Math.abs(Math.cos(angle)) < 1e-10) {
+    text = ERROR_TEXT;
+    clearState();
+    showSub('');
+    show();
+    return;
+  }
+
+  let result = Math[name](angle);
+
+  // 浮点残差清理：结果绝对值过小时归零（如 sin 180° ≈ 1.2e-16 应显示 0）
+  if (Math.abs(result) < 1e-12) {
+    result = 0;
+  }
+
+  text = formatResult(result);
+
+  if (text === ERROR_TEXT) {
+    clearState();
+    showSub('');
+  }
+
+  show();
+}
+
+/** C 键：全部清零。 */
+function inputClear() {
+  text = INITIAL;
+  clearState();
+  lastOp = null; // 连算记忆一并清除
+  lastRight = null;
+  canRepeat = false;
+  showSub('');
+  show();
+}
+
+function inputCopy() {
+  if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+    showSub('复制失败');
+    return;
+  }
+
+  navigator.clipboard.writeText(text)
+    .then(() => showSub('已复制'))
+    .catch(() => showSub('复制失败'));
+}
+/** 内存加：把当前显示的数加到内存里。 */
+function inputMemoryAdd() {
+  if (isError()) {
+    return;
+  }
+  const value = Number(text);
+  if (!Number.isFinite(value)) {
+    return;
+  }
+  memory = memory + value;
+  waiting = true;
+}
+
+/** 内存减：把当前显示的数从内存里减掉。 */
+function inputMemorySubtract() {
+  if (isError()) {
+    return;
+  }
+  const value = Number(text);
+  if (!Number.isFinite(value)) {
+    return;
+  }
+  memory = memory - value;
+  waiting = true;
+}
+
+/** 内存读：把内存里的数取出来显示到主屏。 */
+function inputMemoryRecall() {
+  if (isError()) {
+    return;
+  }
+  text = formatResult(memory);
+  waiting = true;
+  show();
+}
+
+/** 内存清：把内存归零。 */
+function inputMemoryClear() {
+  memory = 0;
+}
+
+// ---------------------------------------------------------------
+// 键盘渲染
+// ---------------------------------------------------------------
+const LAYOUT = [
+  ['7', 'digit'], ['8', 'digit'], ['9', 'digit'], ['C', 'clear'],
+  ['4', 'digit'], ['5', 'digit'], ['6', 'digit'], ['÷', 'operator'],
+  ['1', 'digit'], ['2', 'digit'], ['3', 'digit'], ['×', 'operator'],
+  ['0', 'digit'], ['−', 'operator'], ['+', 'operator'], ['=', 'equals'],
+  ['.', 'decimal'], ['⌫', 'backspace'], ['CE', 'clearEntry'], ['√', 'sqrt'],
+  ['x²', 'square'],
+  ['1/x', 'reciprocal'],
+  ['π', 'pi'],
+  ['(', 'lparen'], [')', 'rparen'], // #43 新增：末行整行放左右括号
+  ['复制', 'copy'],
+  ['MC', 'mc'], ['MR', 'mr'], ['M+', 'mplus'], ['M−', 'mminus'],
+  ['%', 'percent'], // #33 新增：百分号键
+  ['sin', 'trig'], ['cos', 'trig'], ['tan', 'trig'], // 三角函数键
+  ['DEG', 'angleMode'], // 角度/弧度切换键：键面文字随当前模式变化
+];
+
+const KEY_CLASS = {
+  digit: 'key--normal',
+  operator: 'key--action',
+  clear: 'key--danger',
+  equals: 'key--success',
+  decimal: 'key--normal',
+  backspace: 'key--action',
+  clearEntry: 'key--danger',
+  sqrt: 'key--action',
+  square: 'key--action',
+  percent: 'key--action',
+  reciprocal: 'key--action',
+  pi: 'key--action',
+  lparen: 'key--action', // #43 新增
+  rparen: 'key--action',
+  copy: 'key--action',
+  mc: 'key--action',
+  mr: 'key--action',
+  mplus: 'key--action',
+  mminus: 'key--action',
+  trig: 'key--action', // 三角函数键
+  angleMode: 'key--action', // 角度/弧度切换键
+};
+
+LAYOUT.forEach(([label, kind]) => {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `key ${KEY_CLASS[kind]}`;
+  button.textContent = label;
+  button.addEventListener('click', () => {
+    if (kind === 'digit') {
+      inputDigit(label);
+    } else if (kind === 'operator') {
+      inputOperator(label);
+    } else if (kind === 'decimal') {
+      inputDecimal();
+    } else if (kind === 'clear') {
+      inputClear();
+    } else if (kind === 'backspace') {
+      inputBackspace();
+    } else if (kind === 'clearEntry') {
+      inputClearEntry();
+    } else if (kind === 'sqrt') {
+      inputSqrt();
+    } else if (kind === 'square') {
+      inputSquare();
+    } else if (kind === 'reciprocal') {
+      inputReciprocal();
+    } else if (kind === 'percent') {
+      inputPercent();
+    } else if (kind === 'pi') {
+      inputPi();
+    } else if (kind === 'copy') {
+      inputCopy();
+    } else if (kind === 'mc') {
+      inputMemoryClear();
+    } else if (kind === 'mr') {
+      inputMemoryRecall();
+    } else if (kind === 'mplus') {
+      inputMemoryAdd();
+    } else if (kind === 'mminus') {
+      inputMemorySubtract();
+    } else if (kind === 'trig') {
+      inputTrig(label);
+    } else if (kind === 'angleMode') {
+      toggleAngleMode();
+      button.textContent = useDegrees ? 'DEG' : 'RAD';
+    } else if (kind === 'lparen' || kind === 'rparen') {
+      // 括号键占位：尚无表达式解析，忽略点击，避免误触发 =
+    } else {
+      inputEquals();
     }
     return String(Number(n.toPrecision(12)));
 }
