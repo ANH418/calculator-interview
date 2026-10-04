@@ -80,10 +80,18 @@ body {
   font-weight: bold;
   color: #fff;
   cursor: pointer;
-  transition: filter .15s;
+  -webkit-tap-highlight-color: transparent;
+  /* 按下反馈用 transform 实现：纯视觉，不参与布局、不会挤动其它键（#121） */
+  transition: transform .12s ease, filter .15s;
 }
 .key:hover  { filter: brightness(1.15); }
-.key:active { filter: brightness(.9); }
+.key:active { transform: scale(.94); filter: brightness(.9); }
+
+/* 尊重系统的「减少动态效果」偏好：不做缩放，只保留亮度反馈 */
+@media (prefers-reduced-motion: reduce) {
+  .key { transition: none; }
+  .key:active { transform: none; }
+}
 
 .key--normal  { background: var(--key-normal); }   /* 数字键 */
 .key--action  { background: var(--key-action); }   /* 运算符键 */
