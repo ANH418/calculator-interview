@@ -85,7 +85,9 @@ const OPERATORS = {
   '−': (a, b) => a - b,
   '×': (a, b) => a * b,
   '÷': (a, b) => a / b,
-};
+ 'xʸ': (a, b) => Math.pow(a, b), // 新增：任意次幂 xʸ
+};  
+
 
 function formatResult(n) {
   if (!Number.isFinite(n)) {
@@ -540,7 +542,9 @@ const LAYOUT = [
   ['%', 'percent'], // #33 新增：百分号键
   ['sin', 'trig'], ['cos', 'trig'], ['tan', 'trig'], // 三角函数键
   ['DEG', 'angleMode'], // 角度/弧度切换键：键面文字随当前模式变化
-];
+ ['xʸ', 'operator'], // 新增：任意次幂键
+]; 
+
 
 const KEY_CLASS = {
   digit: 'key--normal',
