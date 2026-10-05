@@ -108,7 +108,7 @@ const OPERATORS = {
   '×': (a, b) => a * b,
   '÷': (a, b) => a / b,
  'xʸ': (a, b) => Math.pow(a, b), // 新增：任意次幂 xʸ
- 'ʸ√x': (a, b) => Math.pow(a, 1 / b), // ← 新增：n 次方根，b 是根指数
+ 'ʸ√x': (a, b) => (a < 0 && b % 2 === 1) ? -Math.pow(-a, 1 / b) : Math.pow(a, 1 / b), // ← 新增：n 次方根，b 是根指数
 };  
 
 
