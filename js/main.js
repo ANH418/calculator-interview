@@ -15,16 +15,16 @@ const historyPanel = document.getElementById('history-panel');
  * @returns {number} 两数之和
  */
 function add(a, b) {
+  // TODO: 整个计算器现在只会这一件事，而且还没实现——等着你的 PR
   return a + b;
 }
-
 /**
  * 常用对数 log10
  * @param {number} x 输入数字
  * @returns {number|string} 以10为底的对数，x≤0返回非法输入
  */
 function log10(x) {
-  if (x <= 0) {
+  if(x <= 0){
     return "非法输入";
   }
   const res = Math.log10(x);
@@ -62,6 +62,7 @@ let canRepeat = false;
 // ---------------------------------------------------------------
 // 主显示区字号自适应：位数多到装不下就逐像素缩小，缩到下限为止（#124）
 // ---------------------------------------------------------------
+// 基准字号直接读样式表，避免和 css/style.css 的 32px 各写一份
 const DISPLAY_FONT_BASE = parseFloat(getComputedStyle(displayMain).fontSize) || 32;
 const DISPLAY_FONT_MIN = 14; // 最小字号：再长也不小于它，超出部分交给横向滚动
 
@@ -106,8 +107,8 @@ const OPERATORS = {
   '−': (a, b) => a - b,
   '×': (a, b) => a * b,
   '÷': (a, b) => a / b,
-  'xʸ': (a, b) => Math.pow(a, b), // 任意次幂 xʸ
-};
+ 'xʸ': (a, b) => Math.pow(a, b), // 新增：任意次幂 xʸ
+};  
 
 
 function formatResult(n) {
@@ -120,7 +121,6 @@ function formatResult(n) {
   return String(Number(n.toPrecision(12)));
 }
 
-// [FIX] applyPending：acc 保存原始数值结果（保留精度），仅用 formatResult 做显示判断
 function applyPending() {
   const right = Number(text);
   const result = OPERATORS[pendingOp](acc, right);
@@ -134,7 +134,7 @@ function applyPending() {
     return false;
   }
 
-  acc = result;          // 保留原始数值，不截断精度
+  acc = result;
   return true;
 }
 
@@ -159,7 +159,7 @@ function inputDecimal() {
   if (isError()) {
     text = INITIAL;
   }
-  canRepeat = false;
+  canRepeat = false; // 开始新一轮数字输入，连算资格作废
   if (waiting) {
     text = `${INITIAL}.`;
     waiting = false;
@@ -169,7 +169,6 @@ function inputDecimal() {
   show();
 }
 
-// [FIX] inputOperator：acc 保存原始数值，显示用 formatResult
 function inputOperator(op) {
   if (isError()) {
     return;
@@ -185,7 +184,7 @@ function inputOperator(op) {
     if (!applyPending()) {
       return;
     }
-    text = formatResult(acc);   // 仅显示格式化，acc 本身保持原始精度
+    text = formatResult(acc);
     show();
   } else {
     acc = Number(text);
@@ -196,7 +195,6 @@ function inputOperator(op) {
   showSub(`${formatResult(acc)} ${op}`);
 }
 
-// [FIX] inputEquals：历史行用 formatResult(acc) 显示，不影响内部精度
 function inputEquals() {
   if (isError()) {
     return;
@@ -227,6 +225,7 @@ function inputEquals() {
 
   text = formatResult(acc);
 
+  // line 在 applyPending 之前就算好了，左侧操作数不会被结果覆盖（原来这里把 acc 用成了结果）
   recordHistory(line, text);
 
   clearState();
@@ -258,7 +257,7 @@ function inputBackspace() {
 function inputClearEntry() {
   text = INITIAL;
   waiting = false;
-  canRepeat = false;
+  canRepeat = false; // CE 开始新的输入，连算资格作废
 
   if (pendingOp === null) {
     acc = null;
@@ -274,7 +273,7 @@ function inputSqrt() {
   if (isError()) {
     return;
   }
-  canRepeat = false;
+  canRepeat = false; // 一元运算改变了当前数，连算资格作废
 
   const value = Number(text);
   if (value < 0) {
@@ -294,7 +293,7 @@ function inputPercent() {
   if (isError()) {
     return;
   }
-  canRepeat = false;
+  canRepeat = false; // 一元运算改变了当前数，连算资格作废
 
   const value = Number(text);
   const isPercentOfLeft = pendingOp === '+' || pendingOp === '−';
@@ -321,7 +320,7 @@ function inputSquare() {
   if (isError()) {
     return;
   }
-  canRepeat = false;
+  canRepeat = false; // 一元运算改变了当前数，连算资格作废
 
   const value = Number(text);
   const result = formatResult(value * value);
@@ -343,7 +342,7 @@ function inputReciprocal() {
   if (isError()) {
     return;
   }
-  canRepeat = false;
+  canRepeat = false; // 一元运算改变了当前数，连算资格作废
 
   const value = Number(text);
   text = formatResult(1 / value);
@@ -356,7 +355,7 @@ function inputReciprocal() {
   show();
 }
 
-/** π 键：输入圆周率的近似值。 */
+/** π 键：输入圆周率的近似值（用浮点近似，不做高精度符号显示）。 */
 const PI_TEXT = formatResult(Math.PI);
 
 function inputPi() {
@@ -369,10 +368,23 @@ function inputPi() {
 }
 
 // ---------------------------------------------------------------
-// 新增：常用对数 log10 键
-// 复用已有的 log10() 函数，一元运算行为与 √ 一致。
+// 三角函数与角度模式（DEG/RAD）
 // ---------------------------------------------------------------
-function inputLog10() {
+let useDegrees = true; // 默认角度制 DEG
+
+/** DEG/RAD 切换键：翻转角度模式；无 pending 运算时在副屏提示当前模式。 */
+function toggleAngleMode() {
+  useDegrees = !useDegrees;
+  if (pendingOp === null) {
+    showSub(useDegrees ? '角度制 DEG' : '弧度制 RAD');
+  }
+}
+
+/**
+ * 三角函数键：对当前显示值求 sin/cos/tan，行为与 √ 等一元运算键一致。
+ * @param {string} name 函数名：'sin' | 'cos' | 'tan'
+ */
+function inputTrig(name) {
   if (isError()) {
     return;
   }
@@ -383,75 +395,11 @@ function inputLog10() {
     return;
   }
 
-  const result = log10(value);
-
-  // log10 对 x≤0 返回字符串「非法输入」，统一落到错误态
-  if (typeof result === 'string') {
-    text = ERROR_TEXT;
-    clearState();
-    showSub('');
-    show();
-    return;
-  }
-
-  text = formatResult(result);
-  show();
-}
-
-// ---------------------------------------------------------------
-// 新增：10 的 x 次方键
-// 复用已有的 pow10() 函数；溢出交给 formatResult 判为错误。
-// ---------------------------------------------------------------
-function inputPow10() {
-  if (isError()) {
-    return;
-  }
-  canRepeat = false;
-
-  const value = Number(text);
-  if (!Number.isFinite(value)) {
-    return;
-  }
-
-  const shown = formatResult(pow10(value));
-
-  if (shown === ERROR_TEXT) {
-    text = ERROR_TEXT;
-    clearState();
-    showSub('');
-    show();
-    return;
-  }
-
-  text = shown;
-  show();
-}
-
-// ---------------------------------------------------------------
-// 三角函数与角度模式（DEG/RAD）
-// ---------------------------------------------------------------
-let useDegrees = true; // 默认角度制 DEG
-
-function toggleAngleMode() {
-  useDegrees = !useDegrees;
-  if (pendingOp === null) {
-    showSub(useDegrees ? '角度制 DEG' : '弧度制 RAD');
-  }
-}
-
-function inputTrig(name) {
-  if (isError()) {
-    return;
-  }
-  canRepeat = false;
-
-  const value = Number(text);
-  if (!Number.isFinite(value)) {
-    return;
-  }
-
+  // DEG 模式先把角度换算成弧度；RAD 模式直接用输入值
   const angle = useDegrees ? (value * Math.PI) / 180 : value;
 
+  // tan 在 90°（π/2）等无定义处：余弦接近 0，按「错误」处理，不显示 Infinity。
+  // 阈值取 1e-10：显示值只有 12 位有效数字，离 π/2 这么近的输入就视为 π/2
   if (name === 'tan' && Math.abs(Math.cos(angle)) < 1e-10) {
     text = ERROR_TEXT;
     clearState();
@@ -462,6 +410,7 @@ function inputTrig(name) {
 
   let result = Math[name](angle);
 
+  // 浮点残差清理：结果绝对值过小时归零（如 sin 180° ≈ 1.2e-16 应显示 0）
   if (Math.abs(result) < 1e-12) {
     result = 0;
   }
@@ -479,12 +428,18 @@ function inputTrig(name) {
 // ---------------------------------------------------------------
 // 括号：用栈暂存外层上下文，按下 ) 时把括号内的算式求值
 // ---------------------------------------------------------------
+
+// 每层存 { acc, pendingOp }，即按下 ( 那一刻的外层运算上下文
 const parenStack = [];
 
+/** 左括号键：开一个子表达式，把外层上下文压栈，当前算式从零开始。 */
 function inputLParen() {
   if (isError()) {
     return;
   }
+  // 只有在「正等着一个操作数」的位置才允许开括号：刚按下运算符、刚求值完（waiting），
+  // 或空白起点（C 之后）。其余位置一律忽略——刚打完一个数字再按 (（如 1 + 2 后的那个 (）
+  // 或刚闭合一个括号，都还没有运算符衔接，开了就会出现 5( 这种缺运算符的式子
   const expectingOperand = waiting || (pendingOp === null && text === INITIAL);
   if (!expectingOperand) {
     return;
@@ -495,34 +450,35 @@ function inputLParen() {
   pendingOp = null;
   text = INITIAL;
   waiting = false;
-  canRepeat = false;
+  canRepeat = false; // 换到子表达式，连算资格作废
   show();
 }
 
-// [FIX] inputRParen：括号求值后，内层结果必须写回 text，
-// 否则外层 applyPending 读到的是括号内的最后一个操作数而非计算结果
+/** 右括号键：先把括号内的算式算完，再把结果并回外层上下文。 */
 function inputRParen() {
   if (isError() || parenStack.length === 0) {
-    return;
+    return; // 没有未闭合的 ( ，忽略点击
   }
 
-  let innerValue;
+  // 括号内还有没算完的运算（如 2 + 3），先算掉
   if (pendingOp !== null && !waiting) {
     if (!applyPending()) {
-      parenStack.length = 0;
+      parenStack.length = 0; // 求值出错（如除零），整串括号一并作废
       return;
     }
-    innerValue = acc;                       // 内层运算的原始数值结果
-  } else {
-    innerValue = Number(text);              // 括号内没有待算运算，直接取当前值
+    text = formatResult(acc);
   }
 
+  const value = text;
   const outer = parenStack.pop();
 
+  // 括号结果并回外层：外层有运算符就等按 = 时合并，没有它就是整个式子
   acc = outer.acc;
   pendingOp = outer.pendingOp;
-  text = formatResult(innerValue);          // 关键修复：用内层结果覆盖显示值
-  waiting = outer.pendingOp !== null;
+  text = value;
+  // 外层没有运算符 → 这个括号就是整个式子，结果等同于按完 = ，下一个数字另起一轮；
+  // 外层还有运算符 → 括号结果是一个待合并的操作数，与刚打完一个数同构
+  waiting = outer.pendingOp === null;
   canRepeat = false;
   show();
 }
@@ -532,17 +488,17 @@ function inputPlusMinus() {
   if (isError()) {
     return;
   }
-  canRepeat = false;
+  canRepeat = false; // 一元运算改变了当前数，连算资格作废
 
   const value = Number(text);
   if (value === 0) {
-    return;
+    return; // 验收标准 2：0.0 点击 ± 依旧为 0.0
   }
 
   if (text.startsWith('-')) {
-    text = text.slice(1);
+    text = text.slice(1); // 负数变回正数
   } else {
-    text = `-${text}`;
+    text = `-${text}`; // 正数变为负数
   }
   show();
 }
@@ -551,8 +507,8 @@ function inputPlusMinus() {
 function inputClear() {
   text = INITIAL;
   clearState();
-  parenStack.length = 0;
-  lastOp = null;
+  parenStack.length = 0; // 未闭合的括号一并清零
+  lastOp = null; // 连算记忆一并清除
   lastRight = null;
   canRepeat = false;
   showSub('');
@@ -569,7 +525,7 @@ function inputCopy() {
     .then(() => showSub('已复制'))
     .catch(() => showSub('复制失败'));
 }
-
+/** 内存加：把当前显示的数加到内存里。 */
 function inputMemoryAdd() {
   if (isError()) {
     return;
@@ -582,6 +538,7 @@ function inputMemoryAdd() {
   waiting = true;
 }
 
+/** 内存减：把当前显示的数从内存里减掉。 */
 function inputMemorySubtract() {
   if (isError()) {
     return;
@@ -594,6 +551,7 @@ function inputMemorySubtract() {
   waiting = true;
 }
 
+/** 内存读：把内存里的数取出来显示到主屏。 */
 function inputMemoryRecall() {
   if (isError()) {
     return;
@@ -603,6 +561,7 @@ function inputMemoryRecall() {
   show();
 }
 
+/** 内存清：把内存归零。 */
 function inputMemoryClear() {
   memory = 0;
 }
@@ -619,15 +578,14 @@ const LAYOUT = [
   ['x²', 'square'],
   ['1/x', 'reciprocal'],
   ['π', 'pi'],
-  ['(', 'lparen'], [')', 'rparen'],
+  ['(', 'lparen'], [')', 'rparen'], // #43 新增：末行整行放左右括号
   ['复制', 'copy'],
   ['MC', 'mc'], ['MR', 'mr'], ['M+', 'mplus'], ['M−', 'mminus'],
-  ['%', 'percent'],
-  ['sin', 'trig'], ['cos', 'trig'], ['tan', 'trig'],
-  ['log', 'log10'], ['10ˣ', 'pow10'],   // 新增：常用对数 / 10 的 x 次方
-  ['DEG', 'angleMode'],
-  ['xʸ', 'operator'],
-  ['±', 'plusMinus'],
+  ['%', 'percent'], // #33 新增：百分号键
+  ['sin', 'trig'], ['cos', 'trig'], ['tan', 'trig'], // 三角函数键
+  ['DEG', 'angleMode'], // 角度/弧度切换键：键面文字随当前模式变化
+  ['xʸ', 'operator'], // 新增：任意次幂键
+  ['±', 'plusMinus'], // #102 新增：正负切换键
 ];
 
 const KEY_CLASS = {
@@ -644,17 +602,15 @@ const KEY_CLASS = {
   plusMinus: 'key--action',
   reciprocal: 'key--action',
   pi: 'key--action',
-  lparen: 'key--action',
+  lparen: 'key--action', // #43 新增
   rparen: 'key--action',
   copy: 'key--action',
   mc: 'key--action',
   mr: 'key--action',
   mplus: 'key--action',
   mminus: 'key--action',
-  trig: 'key--action',
-  angleMode: 'key--action',
-  log10: 'key--action',  // 新增
-  pow10: 'key--action',  // 新增
+  trig: 'key--action', // 三角函数键
+  angleMode: 'key--action', // 角度/弧度切换键
 };
 
 LAYOUT.forEach(([label, kind]) => {
@@ -699,10 +655,6 @@ LAYOUT.forEach(([label, kind]) => {
       inputMemorySubtract();
     } else if (kind === 'trig') {
       inputTrig(label);
-    } else if (kind === 'log10') {
-      inputLog10();
-    } else if (kind === 'pow10') {
-      inputPow10();
     } else if (kind === 'angleMode') {
       toggleAngleMode();
       button.textContent = useDegrees ? 'DEG' : 'RAD';
@@ -718,7 +670,7 @@ LAYOUT.forEach(([label, kind]) => {
 });
 
 // =========================================
-// 物理键盘输入监听
+// 新增：物理键盘输入监听
 // =========================================
 document.addEventListener('keydown', (e) => {
   if (e.key >= '0' && e.key <= '9') {
@@ -746,17 +698,21 @@ document.addEventListener('keydown', (e) => {
 });
 
 // =========================================
-// 历史记录增强（持久化 / 点击回填 / 清空）
+// 新增：历史记录增强（持久化 / 点击回填 / 清空）
+// 复用已合并的 #history-list 面板，不新增面板、不改显示区
 // =========================================
-const HISTORY_KEY = 'calculator-history';
-const HISTORY_MAX = 20;
+const HISTORY_KEY = 'calculator-history'; // localStorage 里的存储键
+const HISTORY_MAX = 20; // 最多保留条数，超出丢弃最旧的
 
+// 每条 { line: '12 + 7 =', result: '19' }，新的排最前
 let history = [];
 
+/** 只认结构完整的记录：脏数据（null / 缺字段）直接丢掉，免得渲染出 undefined。 */
 function isHistoryItem(item) {
   return Boolean(item) && typeof item.line === 'string' && typeof item.result === 'string';
 }
 
+/** 启动时读取历史；读不出来（无痕模式 / 数据损坏）就当没有。 */
 function loadHistory() {
   try {
     const arr = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
@@ -766,6 +722,7 @@ function loadHistory() {
   }
 }
 
+/** 写回 localStorage；写不进去（无痕模式）就静默跳过，不影响计算。 */
 function saveHistory() {
   try {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
@@ -774,6 +731,7 @@ function saveHistory() {
   }
 }
 
+/** 求值成功后记一条并刷新面板。 */
 function recordHistory(line, result) {
   history.unshift({ line, result });
   if (history.length > HISTORY_MAX) {
@@ -783,24 +741,27 @@ function recordHistory(line, result) {
   renderHistory();
 }
 
+/** 点某条记录：把该次结果回填到主屏，作为新算式的起点。 */
 function refillFromHistory(item) {
   text = item.result;
   clearState();
-  canRepeat = false;
-  waiting = true;
+  canRepeat = false; // 回填的是另一条历史的结果，与之前那次连算无关
+  waiting = true; // 与求值后一致：接着按数字另起一轮，按运算符则用这个结果继续算
   showSub('');
   show();
 }
 
+/** 「清空」按钮：清掉全部记录，含已持久化的。 */
 function clearHistory() {
   history = [];
   saveHistory();
   renderHistory();
 }
 
+/** 把 history 刷到面板上。 */
 function renderHistory() {
   if (!historyList) {
-    return;
+    return; // 页面没有历史面板时整个功能自动失效，不影响计算
   }
 
   historyList.innerHTML = '';
@@ -822,7 +783,7 @@ function renderHistory() {
     historyList.appendChild(li);
   });
 
-  historyList.scrollTop = 0;
+  historyList.scrollTop = 0; // 最新的在最上面，回到顶部
 }
 
 // 「清空」按钮挂在标题右侧：标题与按钮包一层，index.html 不动
