@@ -817,3 +817,122 @@ if (historyPanel && historyList) {
 loadHistory();
 renderHistory();
 show();
+
+// =========================================
+// 新增：十进制 → 二进制 / 八进制 / 十六进制（关联提案 #145）
+// 只做十进制向 BIN/OCT/HEX 的单向转换，不反向转回十进制。
+// 输入为十进制整数；小数、负数、非数字一律按非法输入处理（副屏提示 + 主屏「错误」），
+// 全程不出现 NaN、页面不崩溃。
+// 本段为纯叠加新增，未改动上方任何既有代码、显示区 DOM 结构与既有函数签名。
+// =========================================
+
+/**
+ * 把十进制整数的显示文本转成指定进制的字符串。
+ * @param {string} input 当前主屏文本（十进制）
+ * @param {number} radix 目标进制：2 / 8 / 16
+ * @returns {{ ok: true, value: string } | { ok: false, reason: string }}
+ *   成功返回 ok:true，value 为转换结果（十六进制 A-F 统一大写）；
+ *   失败返回 ok:false，reason 为非法输入的中文原因。
+ */
+function convertFromDecimal(input, radix) {
+  const raw = String(input).trim();
+
+  // 空输入 / 纯符号：不是合法的十进制整数
+  if (raw === '' || raw === '-' || raw === '+') {
+    return { ok: false, reason: '非法输入' };
+  }
+
+  // 负数是非法输入：本题只支持非负十进制整数
+  if (raw.startsWith('-')) {
+    return { ok: false, reason: '不支持负数' };
+  }
+
+  // 小数是非法输入：转换只针对十进制整数
+  if (raw.includes('.')) {
+    return { ok: false, reason: '不支持小数' };
+  }
+
+  // 严格的十进制整数字面量校验：仅数字组成，避免 Number() 把 '1e3'、'0x10'、'Infinity' 当成合法数
+  if (!/^\d+$/.test(raw)) {
+    return { ok: false, reason: '非法输入' };
+  }
+
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value)) {
+    return { ok: false, reason: '数值过大' };
+  }
+
+  let converted;
+  if (radix === 16) {
+    converted = value.toString(16).toUpperCase(); // 十六进制 A-F 大写
+  } else {
+    converted = value.toString(radix);
+  }
+
+  // 防御式兜底：任何意外都不允许把 NaN/undefined 显示出去
+  if (typeof converted !== 'string' || converted === '' || converted.includes('NaN')) {
+    return { ok: false, reason: '非法输入' };
+  }
+
+  return { ok: true, value: converted };
+}
+
+/**
+ * 转换键的统一入口：读取当前主屏值，按目标进制转换并把结果写回主屏。
+ * 兼容既有状态机：转换结果写回 text 并置 waiting，后续可直接参与四则运算。
+ * @param {number} radix 目标进制：2 / 8 / 16
+ * @param {string} label 副屏提示用的进制名：'BIN' | 'OCT' | 'HEX'
+ */
+function inputBaseConvert(radix, label) {
+  const from = isError() ? '' : text;
+  const result = convertFromDecimal(from, radix);
+
+  if (!result.ok) {
+    // 非法输入：主屏进「错误」态，副屏写明原因，页面不崩、不出现 NaN
+    text = ERROR_TEXT;
+    clearState();
+    canRepeat = false;
+    showSub(`十进制 → ${label}：${result.reason}`);
+    show();
+    return;
+  }
+
+  canRepeat = false; // 一元转换改变了当前数，连算资格作废
+  text = result.value;
+  showSub(`${from} (十进制) = ${result.value} (${label})`);
+  show();
+}
+
+/** 十进制 → 二进制键。 */
+function inputBinary() {
+  inputBaseConvert(2, 'BIN');
+}
+
+/** 十进制 → 八进制键。 */
+function inputOctal() {
+  inputBaseConvert(8, 'OCT');
+}
+
+/** 十进制 → 十六进制键。 */
+function inputHex() {
+  inputBaseConvert(16, 'HEX');
+}
+
+// #145 新增：在键盘网格末尾追加 BIN / OCT / HEX 三个转换键。
+// 不改动 LAYOUT / KEY_CLASS / 既有按键分发逻辑（develop 的 static-check
+// 白名单未收录新 kind，且本 PR 约束只改 js/main.js），按 README 增补条例
+// 「显示区之外要加按钮也可以」（CT1），沿用现有 .key .key--action 样式直接追加。
+const BASE_CONVERT_KEYS = [
+  ['BIN', inputBinary],
+  ['OCT', inputOctal],
+  ['HEX', inputHex],
+];
+
+BASE_CONVERT_KEYS.forEach(([label, handler]) => {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'key key--action';
+  button.textContent = label;
+  button.addEventListener('click', handler);
+  keyboard.appendChild(button);
+});
