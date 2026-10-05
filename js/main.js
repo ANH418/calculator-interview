@@ -108,6 +108,7 @@ const OPERATORS = {
   '×': (a, b) => a * b,
   '÷': (a, b) => a / b,
  'xʸ': (a, b) => Math.pow(a, b), // 新增：任意次幂 xʸ
+ 'ʸ√x': (a, b) => (a < 0 && b % 2 === 1) ? -Math.pow(-a, 1 / b) : Math.pow(a, 1 / b), // ← 新增：n 次方根，b 是根指数
 };  
 
 
@@ -586,6 +587,7 @@ const LAYOUT = [
   ['DEG', 'angleMode'], // 角度/弧度切换键：键面文字随当前模式变化
   ['xʸ', 'operator'], // 新增：任意次幂键
   ['±', 'plusMinus'], // #102 新增：正负切换键
+  ['ʸ√x', 'operator'], // ← 新增：n 次方根键
 ];
 
 const KEY_CLASS = {
