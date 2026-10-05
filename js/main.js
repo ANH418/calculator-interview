@@ -587,7 +587,7 @@ const LAYOUT = [
   ['DEG', 'angleMode'], // 角度/弧度切换键：键面文字随当前模式变化
   ['xʸ', 'operator'], // 新增：任意次幂键
   ['±', 'plusMinus'], // #102 新增：正负切换键
-  ['ʸ√x', 'nroot'], // ← 新增：n 次方根键
+  ['ʸ√x', 'operator'], // ← 新增：n 次方根键
 ];
 
 const KEY_CLASS = {
@@ -613,7 +613,6 @@ const KEY_CLASS = {
   mminus: 'key--action',
   trig: 'key--action', // 三角函数键
   angleMode: 'key--action', // 角度/弧度切换键
-  nroot: 'key--action', // ← 新增：n 次方根键沿用运算符样式
 };
 
 LAYOUT.forEach(([label, kind]) => {
@@ -661,8 +660,6 @@ LAYOUT.forEach(([label, kind]) => {
     } else if (kind === 'angleMode') {
       toggleAngleMode();
       button.textContent = useDegrees ? 'DEG' : 'RAD';
-    } else if (kind === 'nroot') {
-      inputOperator('ʸ√x'); // ← 新增：复用现成的 pending 运算机
     } else if (kind === 'lparen') {
       inputLParen();
     } else if (kind === 'rparen') {
