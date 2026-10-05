@@ -35,7 +35,9 @@ body {
   width: 340px;
   padding: 20px;
   background: var(--panel);
-  border-radius: 16px;
+  /* 连续曲率圆角（squircle）：Chrome 139+ 生效，其余浏览器退化为普通圆角（#120） */
+  border-radius: 30px;
+  corner-shape: squircle;
   box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
 }
 
@@ -49,7 +51,9 @@ body {
   color: var(--display-text);
   background: var(--display-bg);
   border: 2px solid #3a4152;
-  border-radius: 10px;
+  /* 与面板同一套曲率语言，层级递减（#120） */
+  border-radius: 16px;
+  corner-shape: squircle;
   text-align: right;
   overflow-x: auto;      /* 内容过长时横向滚动 */
   white-space: nowrap;
@@ -85,7 +89,9 @@ body {
 .key {
   height: 52px;
   border: none;
-  border-radius: 8px;
+  /* 与面板同一套曲率语言，层级递减（#120） */
+  border-radius: 18px;
+  corner-shape: squircle;
   font-size: 18px;
   font-weight: bold;
   color: #fff;
